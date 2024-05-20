@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+    <div id="button-container">
+        <input type="file" id="upload" accept="image/*">
+        <button id="save">Save Image</button>
+    </div>
+    <div id="canvas-container">
+        <canvas id="canvas" width="1000" height="1000"></canvas>
+    </div>
+</body>
+<script>
+let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
+let pirateHatImg = new Image();
+pirateHatImg.crossOrigin = "anonymous";  // Add this line
+//pirateHatImg.src = './pirate-hat.png';
+let uploadedImg = new Image();
+let dragging = false;
+let resizing = false;
+let pirateHatPos = { x: 0, y: 0 };
+let pirateHatSize = { width: pirateHatImg.width, height: pirateHatImg.height };
+let mouseOffset = { x: 0, y: 0 };
+let resizeCorner = null;
+let uploadedImgPos = { x: 0, y: 0 };
+let uploadedImgSize = { width: uploadedImg.width, height: uploadedImg.height };
+
+pirateHatImg.onload = function() {
+    pirateHatSize = { width: pirateHatImg.width, height: pirateHatImg.height };
+    draw();
+};
+pirateHatImg.src = 'pirate-hat.png';
+
+document.getElementById('upload').addEventListener('change', function(e) {
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        uploadedImg = new Image();
+        uploadedImg.crossOrigin = "anonymous";
+        uploadedImg.onload = function() {
+            // Set the position and size of the uploaded image
+            uploadedImgPos = { x: (canvas.width - uploadedImg.width) / 2, y: (canvas.height - uploadedImg.height) / 2 };
+            uploadedImgSize = { width: uploadedImg.width, height: uploadedImg.height };
+
+            // Draw the image at its position and size
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+            ctx.drawImage(uploadedImg, uploadedImgPos.x, uploadedImgPos.y, uploadedImgSize.width, uploadedImgSize.height); // Draw the image
+
+            draw(); 
+        }
+        uploadedImg.src = event.target.result;
+    }
+    reader.readAsDataURL(e.target.files[0]);
+});
+
+
+function getMousePos(canvas, evt) {
+    var rect = canvas.getBoundingClientRect();
+    return {
+        x: evt.clientX - rect.left,
+        y: evt.clientY - rect.top
+    };
+}
+
+function getCornerPos(rect, corner) {
+    switch (corner) {
+        case 'topLeft':
+            return { x: rect.x, y: rect.y };
+        case 'topRight':
+            return { x: rect.x + rect.width, y: rect.y };
+        case 'bottomLeft':
+            return { x: rect.x, y: rect.y + rect.height };
+        case 'bottomRight':
+            return { x: rect.x + rect.width, y: rect.y + rect.height };
+        default:
+            return null;
+    }
+}
+
+function distance(p1, p2) {
+    var dx = p2.x - p1.x;
+    var dy = p2.y - p1.y;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function pointInRect(point, rect) {
+    return point.x >= rect.x && point.y >= rect.y &&
+           point.x <= rect.x + rect.width && point.y <= rect.y + rect.height;
+}
+
+function getResizeHandleRect(imageRect, corner) {
+    var cornerPos = getCornerPos(imageRect, corner);
+    if (cornerPos === null) {
+        // Handle the case where getCornerPos returns null
+        console.error('Invalid corner:', corner);
+        return null;
+    }
+    var handleSize = 10; // The size of the resize handle
+    return {
+        x: cornerPos.x - handleSize / 2,
+        y: cornerPos.y - handleSize / 2,
+        width: handleSize,
+        height: handleSize
+    };
+}
+
+canvas.addEventListener('mouseleave', function(e) {
+    // Also reset the resizing flag and related variables here in case the mouse leaves the canvas while resizing
+    resizing = false;
+    resizingPirateHat = false;
+    resizingUploadedImg = false;
+    resizeCorner = null;
+});
+
+
+canvas.addEventListener('mousedown', function(e) {
+    var pos = getMousePos(canvas, e);
+    var corners = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
+    var cornerRadius = 5; // Radius of the circles at the corners
+
+    var pirateHatRect = {
+        x: pirateHatPos.x,
+        y: pirateHatPos.y,
+        width: pirateHatSize.width,
+        height: pirateHatSize.height
+    };
+    var uploadedImgRect = {
+        x: uploadedImgPos.x,
+        y: uploadedImgPos.y,
+        width: uploadedImgSize.width,
+        height: uploadedImgSize.height
+    };
+
+    for (var i = 0; i < corners.length; i++) {
+        var corner = corners[i];
+        var handleRect = getResizeHandleRect(pirateHatRect, corner);
+        if (handleRect !== null && pointInRect(pos, handleRect)) {
+            // The mouse is over the resize handle, start resizing
+            resizing = true;
+            resizeCorner = corner;
+            return;
+        }
+        var cornerPos = getCornerPos(pirateHatRect, corner);
+        if (distance(pos, cornerPos) <= cornerRadius) {
+            resizing = true;
+            return;
+        }
+        else {
+            resizing = false;
+        }
+        cornerPos = getCornerPos(uploadedImgRect, corner);
+        if (distance(pos, cornerPos) <= cornerRadius) {
+            resizing = true;
+            return;
+        }
+        else {
+            resizing = false;
+        }
+    }
+
+    if (pointInRect(pos, pirateHatRect)) {
+        dragging = true;
+        mouseOffset = { x: pos.x - pirateHatPos.x, y: pos.y - pirateHatPos.y };
+    }
+
+    if (pointInRect(pos, pirateHatRect)) {
+        dragging = true;
+        draggingPirateHat = true;
+        mouseOffset = { x: pos.x - pirateHatPos.x, y: pos.y - pirateHatPos.y };
+    } else if (pointInRect(pos, uploadedImgRect)) {
+        dragging = true;
+        draggingUploadedImg = true;
+        mouseOffset = { x: pos.x - uploadedImgPos.x, y: pos.y - uploadedImgPos.y };
+    } else {
+        dragging = false;
+        draggingPirateHat = false;
+        draggingUploadedImg = false;
+    }
+
+    // Similar logic for resizing
+    if (pointInRect(pos, getResizeHandleRect(pirateHatRect))) {
+        resizing = true;
+        resizingPirateHat = true;
+        resizeCorner = getResizeCorner(pos, pirateHatRect);
+    } else if (pointInRect(pos, getResizeHandleRect(uploadedImgRect))) {
+        resizing = true;
+        resizingUploadedImg = true;
+        resizeCorner = getResizeCorner(pos, uploadedImgRect);
+    } else {
+        resizing = false;
+        resizingPirateHat = false;
+        resizingUploadedImg = false;
+    }
+});
+
+// window.addEventListener('mouseup', function() { dragging = false; resizing = false; });
+canvas.addEventListener('mouseup', function(e) {
+    dragging = false;
+    draggingPirateHat = false;
+    draggingUploadedImg = false;
+    resizing = false;
+    resizingPirateHat = false;
+    resizingUploadedImg = false;
+    resizeCorner = null;
+    
+});
+
+canvas.addEventListener('mousemove', function(e) {
+    var pos = getMousePos(canvas, e);
+    var pos = getMousePos(canvas, e);
+    var pirateHatRect = {
+        x: pirateHatPos.x,
+        y: pirateHatPos.y,
+        width: pirateHatSize.width,
+        height: pirateHatSize.height
+    };
+    var uploadedImgRect = {
+        x: uploadedImgPos.x,
+        y: uploadedImgPos.y,
+        width: uploadedImgSize.width,
+        height: uploadedImgSize.height
+    };
+
+    var corners = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
+    var cornerRadius = 5; // Radius of the circles at the corners
+
+    // Check if the mouse is over a corner of the pirate hat or the uploaded image
+    // If it is, set the resizing flag to true
+    
+    for (var i = 0; i < corners.length; i++) {
+        var corner = corners[i];
+        var cornerPos = getCornerPos(pirateHatRect, corner);
+        if (distance(pos, cornerPos) <= cornerRadius && e.buttons === 1) {
+            resizing = true;
+            resizingPirateHat = true;
+            resizeCorner = corner;
+            return;
+        }
+        cornerPos = getCornerPos(uploadedImgRect, corner);
+        if (distance(pos, cornerPos) <= cornerRadius && e.buttons === 1) {
+            resizing = true;
+            resizingUploadedImg = true;
+            resizeCorner = corner;
+            return;
+        }
+    }
+    var originalRatio = pirateHatImg.width / pirateHatImg.height;
+    var uploadedImgRatio = uploadedImg ? uploadedImg.width / uploadedImg.height : originalRatio;
+
+    if (dragging) {
+        if (draggingPirateHat) {
+            pirateHatPos = { x: pos.x - mouseOffset.x, y: pos.y - mouseOffset.y };
+        } else if (draggingUploadedImg) {
+            uploadedImgPos = { x: pos.x - mouseOffset.x, y: pos.y - mouseOffset.y };
+        }
+    } if (resizing) {
+        var dx, dy, newWidth, newHeight;
+        if (resizingPirateHat) {
+            dx = pos.x - pirateHatPos.x;
+            dy = pos.y - pirateHatPos.y;
+            switch (resizeCorner) {
+        case 'topLeft':
+            newWidth = pirateHatSize.width - dx;
+            newHeight = newWidth / originalRatio;
+            pirateHatPos = { x: pirateHatPos.x + dx, y: pirateHatPos.y + dy };
+            pirateHatSize = { width: newWidth, height: newHeight };
+            break;
+        case 'topRight':
+            newWidth = dx;
+            newHeight = newWidth / originalRatio;
+            pirateHatPos = { x: pirateHatPos.x, y: pirateHatPos.y + dy };
+            pirateHatSize = { width: newWidth, height: newHeight };
+            break;
+        case 'bottomLeft':
+            newWidth = pirateHatSize.width - dx;
+            newHeight = newWidth / originalRatio;
+            pirateHatPos = { x: pirateHatPos.x + dx, y: pirateHatPos.y };
+            pirateHatSize = { width: newWidth, height: newHeight };
+            break;
+        case 'bottomRight':
+            newWidth = dx;
+            newHeight = newWidth / originalRatio;
+            pirateHatSize = { width: newWidth, height: newHeight };
+            break;
+    }
+        } else if (resizingUploadedImg) {
+            dx = pos.x - uploadedImgPos.x;
+            dy = pos.y - uploadedImgPos.y;
+            switch (resizeCorner) {
+        case 'topLeft':
+            newWidth = uploadedImgSize.width - dx;
+            newHeight = newWidth / uploadedImgRatio;
+            uploadedImgPos = { x: uploadedImgPos.x + dx, y: uploadedImgPos.y + dy };
+            uploadedImgSize = { width: newWidth, height: newHeight };
+            break;
+        case 'topRight':
+            newWidth = dx;
+            newHeight = newWidth / uploadedImgRatio;
+            uploadedImgPos = { x: uploadedImgPos.x, y: uploadedImgPos.y + dy };
+            uploadedImgSize = { width: newWidth, height: newHeight };
+            break;
+        case 'bottomLeft':
+            newWidth = uploadedImgSize.width - dx;
+            newHeight = newWidth / uploadedImgRatio;
+            uploadedImgPos = { x: uploadedImgPos.x + dx, y: uploadedImgPos.y };
+            uploadedImgSize = { width: newWidth, height: newHeight };
+            break;
+        case 'bottomRight':
+            newWidth = dx;
+            newHeight = newWidth / uploadedImgRatio;
+            uploadedImgSize = { width: newWidth, height: newHeight };
+            break;
+    }
+        }
+    }
+    draw();
+});
+
+
+
+function draw() {
+    //
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Draw the uploaded image 
+    ctx.drawImage(uploadedImg, uploadedImgPos.x, uploadedImgPos.y, uploadedImgSize.width, uploadedImgSize.height);
+    // Draw the pirate hat
+    ctx.drawImage(pirateHatImg, pirateHatPos.x, pirateHatPos.y, pirateHatSize.width, pirateHatSize.height);
+    // Draw a rectangle around the pirate hat
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = 'grey';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(pirateHatPos.x, pirateHatPos.y, pirateHatSize.width, pirateHatSize.height);
+    ctx.strokeRect(uploadedImgPos.x, uploadedImgPos.y, uploadedImgSize.width, uploadedImgSize.height);
+
+    // Draw resize handles
+    ctx.fillStyle = 'blue';
+    drawCircle(pirateHatPos.x, pirateHatPos.y); // Top left corner
+    drawCircle(pirateHatPos.x + pirateHatSize.width, pirateHatPos.y); // Top right corner
+    drawCircle(pirateHatPos.x, pirateHatPos.y + pirateHatSize.height); // Bottom left corner
+    drawCircle(pirateHatPos.x + pirateHatSize.width, pirateHatPos.y + pirateHatSize.height); // Bottom right corner
+
+    drawCircle(uploadedImgPos.x, uploadedImgPos.y); // Top left corner
+        drawCircle(uploadedImgPos.x + uploadedImgSize.width, uploadedImgPos.y); // Top right corner
+        drawCircle(uploadedImgPos.x, uploadedImgPos.y + uploadedImgSize.height); // Bottom left corner
+        drawCircle(uploadedImgPos.x + uploadedImgSize.width, uploadedImgPos.y + uploadedImgSize.height); // Bottom right corner
+
+ 
+}
+
+
+
+function drawCircle(x, y) {
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.fill();
+}
+
+function saveCanvas() {
+    // Calculate the painted area
+    var minX = Math.min(uploadedImgPos.x, pirateHatPos.x);
+    var minY = Math.min(uploadedImgPos.y, pirateHatPos.y);
+    var maxX = Math.max(uploadedImgPos.x + uploadedImgSize.width, pirateHatPos.x + pirateHatSize.width);
+    var maxY = Math.max(uploadedImgPos.y + uploadedImgSize.height, pirateHatPos.y + pirateHatSize.height);
+
+    // Create a new canvas and context
+    var newCanvas = document.createElement('canvas');
+    newCanvas.width = maxX - minX;
+    newCanvas.height = maxY - minY;
+    var newCtx = newCanvas.getContext('2d');
+
+    // Draw the images on the new canvas
+    newCtx.drawImage(uploadedImg, uploadedImgPos.x - minX, uploadedImgPos.y - minY, uploadedImgSize.width, uploadedImgSize.height);
+    newCtx.drawImage(pirateHatImg, pirateHatPos.x - minX, pirateHatPos.y - minY, pirateHatSize.width, pirateHatSize.height);
+
+    // Return the new canvas
+    return newCanvas;
+}
+
+document.getElementById('save').addEventListener('click', function() {
+    var newCanvas = saveCanvas();
+    let link = document.createElement('a');
+    link.download = 'image.png';
+    link.href = newCanvas.toDataURL();
+    document.body.appendChild(link); // Append the link to the body
+    link.click();
+    document.body.removeChild(link); // Remove the link from the body
+    draw(); // Redraw the canvas with the selection outline and blue dots
+});
+
+</script>
+
+</body>
+</html>
