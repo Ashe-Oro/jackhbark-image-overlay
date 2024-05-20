@@ -1,4 +1,4 @@
-# Project Name
+# Jack H Bark Avatar Creator
 
 ## Description
 Create your own Jack H Bark avatar including both his pirate hat and eye patch! 
